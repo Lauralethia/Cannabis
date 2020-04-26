@@ -1,0 +1,656 @@
+```{r,echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#Se limpia la memoria y se cargan librerÃ???as ÃÂºtiles
+# rm(list=ls())
+library(Deducer)
+library(pROC)
+library(knitr)
+library(RColorBrewer)
+library(psych)
+library(glmmTMB)
+library(emmeans)
+library(lsmeans)
+library(multcomp)
+library(sjPlot)
+library(ggplot2)
+library(DHARMa)
+library(Hmisc)
+library(FSA)
+require(gridExtra)
+
+library(MASS)
+library(corrplot)
+library(car)
+library(leaps)
+library(lmtest)#shapiro
+library(dplyr)
+library(tree)
+library(pastecs)
+library(VIM) # Para graficar datos perdidos
+library(missForest) 
+library(randomForest)
+library(gbm)
+library(plotmo)   # for the plotres function
+library("GGally")
+
+library(ggplot2)  
+library(Hmisc)
+library(psych)
+library(tictoc)
+library(knitr)
+
+set.seed(2)#paraquecadavezquecomienzaelexperimentoelRhagalomismo
+```
+
+```{r,echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+#Funcionesusadas
+library("LoPampaML")
+
+outliersZ <- function(data, zCutOff = 1.96, replace = NA, values = FALSE, digits = 6) {
+    #compute standard deviation (sample version n = n [not n-1])
+    stdev <- sqrt(sum((data - mean(data, na.rm = T))^2, na.rm = T) / sum(!is.na(data)))
+    #compute absolute z values for each value
+    absZ <- abs(data - mean(data, na.rm = T)) / stdev
+    #subset data that has absZ greater than the zCutOff and replace them with replace
+    #can also replace with other values (such as max/mean of data)
+    data[absZ > zCutOff] <- replace 
+    
+    if (values == TRUE) {
+        return(round(absZ, digits)) #if values == TRUE, return z score for each value
+    } else {
+        return(round(data, digits)) #otherwise, return values with outliers replaced
+    }
+}  
+
+applyBP<-function(DATA,XVAR,YVAR,title.BP)
+{
+fill <- "#4271AE"
+lines <- "#1F3552"
+plot.box <- ggplot(DATA, aes(x = XVAR, y = YVAR)) +
+        geom_boxplot(colour = lines, fill = fill,
+                     size = 1) +
+        scale_y_continuous(name = "VR",
+                              breaks = seq(0, 1, 25),
+                              limits=range(pretty(c(0, YVAR)))) +
+        scale_x_discrete(name = "VE") +
+        ggtitle(title.BP) +
+        theme_bw() +
+        theme(panel.grid.major = element_line(colour = "#d3d3d3"),
+              panel.grid.minor = element_blank(),
+              panel.border = element_blank(),
+              panel.background = element_blank(),
+              plot.title = element_text(size = 14, family = "sans", face = "bold"),
+              text=element_text(family = "sans"),
+              axis.title = element_text(face="bold"),
+              axis.text.x = element_text(colour="black", size = 11),
+              axis.text.y = element_text(colour="black", size = 9),
+              axis.line = element_line(size=0.5, colour = "black"))
+
+return(plot.box)
+}
+```
+
+## Descripcion del problema:
+
+Algunos gráficos exploratorios
+
+```{r, message=TRUE, warning=FALSE, echo=FALSE,fig.align="left"}
+#Cambiareldirectorioadondeestanlosdatos
+setwd("~/Data")
+
+#Secarganlosdatos
+rawDATA1<-read.csv('Terpenos.csv',sep=',',header=TRUE)
+# rawDATA$X.
+# rawDATA$tag
+#Grafico
+rawDATA1$interaction<- with(rawDATA1, interaction(tag,  Mol))
+
+print(cat("CantidadTotStrains:",length(unique(rawDATA1$tag))))
+print(cat("CantidadTotTerp:",length(unique(rawDATA1[which(rawDATA1$Type=='Terpenoid'),"Mol"]))))
+print(cat("CantidadTotCanna:",length(unique(rawDATA1[which(rawDATA1$Type=='Cannabinoid'),"Mol"]))))
+
+chololopo <- rawDATA1[ which(rawDATA1$tag=='chocolope'), ]
+
+# plot(chololopo[which(chololopo$Type=='Terpenoid'),"Mol"],chololopo [which(chololopo$Type=='Terpenoid'),"X."])
+print("chololopo Example")
+
+print(cat("CantidadChocoTerp:",length(unique(chololopo[which(chololopo$Type=='Terpenoid'),"Mol"]))))
+print(cat("CantidadChocoCanna:",length(unique(chololopo[which(chololopo$Type=='Cannabinoid'),"Mol"]))))
+
+fill <- "#4271AE"
+lines <- "#1F3552"
+
+choco1 <- ggplot(chololopo[which(chololopo$Type=='Terpenoid'),], aes(x=Mol, y=X., fill=Mol)) + 
+  # geom_bar(stat="summary", fun.y="mean", color="black", position="dodge")+
+   geom_boxplot(colour = lines, fill = fill,
+                     size = 1) +
+  scale_y_continuous(name="dry%")+ 
+  scale_x_discrete(name = "Terp")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+ ggtitle("Terpenos en el choco")+
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", width=0.3)
+print(choco1)
+
+choco2 <- ggplot(chololopo[which(chololopo$Type=='Cannabinoid'),], aes(x=Mol, y=X., fill=Mol)) + 
+  # geom_bar(stat="summary", fun.y="mean", color="black", position="dodge")+
+   geom_boxplot(colour = lines, fill = fill,
+                     size = 1) +
+  scale_y_continuous(name="dry%")+ 
+  scale_x_discrete(name = "Canna")+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+ ggtitle("Cannabinoid en el choco")+
+  stat_summary(geom = "errorbar", fun.data = mean_se, position = "dodge", width=0.3)
+
+print(choco2)
+
+# colnames(rawDATA1)
+# [1] "tag"         "File"        "Type"        "Mol"         "X."          "dev"         "Name"        "Grower"      "User"        "ID"         
+# [11] "interaction"
+rawDATAsel <- rawDATA1[c("tag"  , "File","Type" ,"Mol"   ,      "X.")]
+rawDATATerp <-reshape(rawDATAsel[which(rawDATAsel$Type=='Terpenoid'),], idvar = c("File","tag" ,"Type"), timevar = c("Mol" ), direction = "wide")
+rawDATACana <-reshape(rawDATAsel[which(rawDATAsel$Type=='Cannabinoid'),], idvar = c("File","tag" ,"Type"), timevar = c("Mol" ), direction = "wide")
+
+# write.csv(rawDATATerp, file = "rawDATATerp")
+# write.csv(rawDATACana, file = "rawDATACana")
+
+print("numer of entrances by strain")
+
+for (i in 1:length(unique(rawDATACana$tag))){
+print(paste(unique(rawDATACana$tag)[i],toString(sum(rawDATACana$tag == unique(rawDATACana$tag)[i]))))
+}
+
+co.var <- function(x) ifelse(length(x)>3,(100*sd(x)/mean(x) ),NA) 
+sdleng <-  function(x) ifelse(length(x)>3,sd(x),NA)
+meanleng <-  function(x) ifelse(length(x)>3,mean(x),NA)
+
+long <- melt(rawDATATerp)
+head(long)
+
+Terprep <- ggplot(long, aes(x=variable, y=value, group=variable, color=variable))+ 
+  scale_y_continuous(name="dry%")+ ggtitle("Terpenos en TODOS los strain") +
+    geom_boxplot(show.legend = FALSE)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+# plot.ts(rawDATATerp)
+print(Terprep)
+
+meanterpenos <- aggregate(value~variable+tag,FUN=meanleng ,data=long)
+meante <- ggplot(meanterpenos, aes(x=variable, y=value, group=variable, color=variable)) + ggtitle("mean Terpenos +4rep") +scale_y_continuous(name="dry%")+ geom_boxplot(show.legend = FALSE)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+print(meante)
+
+varianzaterpenos <- aggregate(value~variable+tag,FUN=sdleng ,data=long)
+varterp <- ggplot(varianzaterpenos, aes(x=variable, y=value, group=variable, color=variable)) + ggtitle("sd Terpenos +4rep") + scale_y_continuous(name="sd dry%")+  geom_boxplot(show.legend = FALSE)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+print(varterp)
+
+covterpenos <- aggregate(value~variable+tag,FUN=co.var,data=long)
+covterp <- ggplot(covterpenos, aes(x=variable, y=value, group=variable, color=variable)) + ggtitle("cov Terpenos +4rep")+ 
+  scale_y_continuous(name="cov dry%")+ geom_boxplot(show.legend = FALSE)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+print(covterp)
+
+
+long <- melt(rawDATACana)
+# head(long)
+cannab <- ggplot(long, aes(x=variable, y=value, group=variable, color=variable)) + ggtitle("Cannab  en TODOS los strain") + 
+  scale_y_continuous(name="dry%")+
+    geom_boxplot(show.legend = TRUE)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+# plot.ts(rawDATATerp)
+print(cannab)
+
+meanCanna <- aggregate(value~variable+tag,FUN=meanleng ,data=long)
+meancan <- ggplot(meanCanna, aes(x=variable, y=value, group=variable, color=variable)) + ggtitle("mean Canna +4rep") + 
+  scale_y_continuous(name="dry%")+ 
+    geom_boxplot(show.legend = FALSE)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+print(meancan)
+
+varianzacanna <- aggregate(value~variable+tag,FUN=sdleng,data=long)
+varcanna <- ggplot(varianzacanna, aes(x=variable, y=value, group=variable, color=variable))+ 
+  scale_y_continuous(name="sd dry%")+ ggtitle("sd Cannab +4rep")+
+    geom_boxplot(show.legend = FALSE)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+print(varcanna)
+
+covacanna <- aggregate(value~variable+tag,FUN=co.var,data=long)
+covcanna <- ggplot(covacanna, aes(x=variable, y=value, group=variable, color=variable)) + 
+  scale_y_continuous(name="cov dry%")+ ggtitle("cov Canna +4rep")+ 
+    geom_boxplot(show.legend = FALSE)+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+print(covcanna)
+
+p<-ggplot(rawDATACana, aes(x =`X..Delta9-THC` , y = X..CBD, colour =tag)) + geom_point(size=2,show.legend = FALSE)
+p+ ggtitle("Rel CBD-THC all strains")
+
+```
+
+```{r, echo=FALSE, message=TRUE, warning=FALSE,include=FALSE}
+# set wd and load data
+
+rawDATA<-read.csv('~Data/datos_porrito.csv',sep=';',header=TRUE)
+
+flavors <-  colnames(rawDATA[1,60:107])
+effects <-  colnames(rawDATA[1,1:19])
+
+ filter <-  rawDATA[,111]
+ N <- length(which(filter == TRUE))
+ strain_names <-  rawDATA[which(filter == TRUE),108]
+ # length(strain_names)
+DATA <- rawDATA[which(filter == TRUE),]
+sativas <- which(rawDATA$categoria == 'Sativa')
+hibridas <- which(rawDATA$categoria == 'Hybrid')
+indicas <- which(rawDATA$categoria == 'Indica')
+
+ length(sativas)
+ length(hibridas)
+ length(indicas)
+
+ rawTHCCBD<-read.csv('~Data/datos_porrito_effectos_alcaloides.csv',sep='\t',header=TRUE)
+ y <- rawTHCCBD$straine
+ strain_names[-match(y,strain_names)]
+ 
+```
+
+```{r, message=TRUE, warning=FALSE, echo=FALSE,include=FALSE}
+ # filter <-  DATA$strain == unique(rawDATA1$tag)
+strains10 <- DATA$strain
+terpenos <- unique(rawDATA1$tag)
+# terpenos[1]
+# strains10[1]
+
+filtro <- terpenos %in% strains10
+ # sum( terpenos %in% strains10)
+# a <- terpenos
+# b <- strains10
+#  a[a %in% b]
+# a[!(a %in% b)]
+
+rows.to.keep<-which(strains10 %in% terpenos) 
+logicfilter <- logical(length = length(strains10))
+logicfilter[rows.to.keep] <- TRUE
+
+# write.csv(logicfilter*1, file = "logicfilter")
+# write.csv(strains10[rows.to.keep], file = "TerpenosLista")
+# length(rows.to.keep)
+#  sum(logicfilter)
+# length(strains10[rows.to.keep])
+long <- melt(rawDATACana)
+long$File <- NULL
+long$Type <- NULL
+meanleng <-  function(x) ifelse(length(x)>1,mean(x),x)
+
+meanacanna <-aggregate(.~tag+variable, long,FUN = meanleng)
+# meanacanna <-aggregate(.~tag+variable, long,FUN = mean)
+
+meanacanna <-reshape(meanacanna, idvar = c("tag"), timevar = c("variable"), direction = "wide")
+
+long <- melt(rawDATATerp)
+long$File <- NULL
+long$Type <- NULL
+meanaterp <-aggregate(.~tag+variable, long,FUN = meanleng)
+# meanaterp <-aggregate(.~tag+variable, long,FUN = mean)
+
+meanaterp <-reshape(meanaterp, idvar = c("tag"), timevar = c("variable"), direction = "wide")
+
+strains.finalesa <-meanaterp$tag[meanaterp$tag %in% meanacanna$tag]
+remove=c("blue-dream")
+strains.finales <- strains.finalesa [! strains.finalesa %in% remove]
+meanaterp.final <- meanaterp[meanaterp$tag %in% strains.finales,]
+meanacanna.final <- meanacanna[meanacanna$tag %in% strains.finales,]
+meanaterp.final$`value.X..mistery-Terpinene	`	<- meanaterp.final$`value.X..?-Terpinene	`
+meanaterp.final$`value.X..?-Terpinene	` <- NULL
+new <-colSums(meanaterp.final[-1], na.rm = TRUE)>0.01
+meanaterp.final2 <- meanaterp.final[,c("tag",names(which(new==TRUE)))]
+meanaterp.final2[meanaterp.final2==0] <- NA
+meanaterp.final <- meanaterp.final2
+
+```
+
+```{r, echo=FALSE, fig.height=12, fig.width=12, message=FALSE, warning=FALSE}
+PlotCont = function(data, mapping, ...){
+    ggplot(data, mapping) + geom_point(..., shape = 19, alpha = 0.5) +
+      geom_smooth(method = "lm")
+}
+
+total.flav <- merge(datos_sabores,meanacanna.final,by="tag")
+total.eff <- merge(datos_effectos,meanacanna.final.menosgiga,by="tag")
+total <- merge(meanacanna.final,meanaterp.final,by="tag")
+meanacanna.final.menosgiga <- meanacanna.final[-which(meanacanna.final$tag == "gigabud"),]
+meanaterp.final.menosgiga <- meanaterp.final[-which(meanaterp.final$tag == "gigabud"),]
+total <- merge(meanacanna.final.menosgiga,meanaterp.final.menosgiga,by="tag")
+nombres <- total$tag
+total <- total[,-c(1)] 
+t_total <- transpose(total)
+# get row and colnames in order
+colnames(t_total) <- nombres
+rownames(t_total) <- colnames(total)
+
+bizzareando <- merge(meanaterp.final.menosgiga,datos_sabores,by= "tag")
+straintipo <- select(bizzareando, tag, categoria)
+
+# total_total <- Reduce(function(x,y) merge(x = x, y = y, by = "tag"),  list(datos_sabores,datos_effectos,meanacanna.final,meanaterp.final))
+total_total <- Reduce(function(x,y) merge(x = x, y = y, by = "tag"),  list(datos_sabores,datos_effectos,meanacanna.final.menosgiga,meanaterp.final.menosgiga))
+
+# write.csv(total_total,file="C:/Users/Amelie/Documents/COCUCO/porro/PaperFinal/Response/AllData")
+
+# total_total <- merge(datos_sabores,datos_effectos,meanacanna.final,meanaterp.final,by="tag")
+
+total_total_red <- total_total
+total_total_red$tag <- NULL
+total_total_plot <- total_total_red[,c(names(meanacanna.final)[-1],"categoria.x")]
+
+datos_effectos <- DATA[DATA$straine %in%  strains.finales,c(effects,"straine","categoria")]
+datos_effectos$tag <- datos_effectos$straine
+datos_effectos$straine <- NULL
+datos_sabores <- DATA[DATA$straine %in%  strains.finales,c(flavors,"straine","categoria")]
+datos_sabores$tag <- datos_sabores$straine
+datos_sabores$straine <- NULL
+# meanaterp.final[meanaterp.final=0]
+# Con terpenos
+# which(strains.finales%in%datos_effectos$straine)
+total.flav <- merge(datos_sabores,meanaterp.final.menosgiga,by="tag")
+x <-total.flav[ , c(flavors)]
+y<-total.flav[ , c(names(meanaterp.final)[-1])]
+
+cor_mat <- corr.test( y,x,use="pairwise.complete.obs",adjust = "none")
+# write.csv(cor_mat$r,file="sabor_terp_R")
+
+cor_mat$r[cor_mat$p>0.05] <- NA
+corrplot(cor_mat$r, na.label =" ",title = "Terpenos y sabores",method = "number",number.cex=0.85)
+# # use vars in 
+# vectores <- paste0(" ~ ", paste(flavors[1:5], collapse=" + ")," + `",paste(names(meanaterp.final)[-1][1:5], collapse="` + `"),"`","|categoria")
+
+
+# m <- !is.na(cor_mat$r)
+# rr <- rownames(m)[row(m)[which(m)]]
+# cc <- colnames(m)[col(m)[which(m)]]
+# 
+# 
+# for (i in 1:length(rr))
+#   {
+#   g2 <- ggpairs(data=total_total[, c("categoria.x",rr[i],cc[i])],
+#           # column = 1:2,
+#           mapping = aes(colour = ),
+#           lower = list(continuous = PlotCont))
+#   print(g2)
+#   }
+# 
+# scatterplotMatrix(as.formula(vectores), data=total.flav , use = c("pairwise.complete.obs")  , main="Scatter")
+total.eff <- merge(datos_effectos,meanaterp.final.menosgiga,by="tag")
+nameTerpenes  = c(names(meanaterp.final)[-1])
+# 
+# write.csv(nameTerpenes,file="C:/Users/Amelie/Documents/COCUCO/porro/PaperFinal/Response/nameTerpenes")
+# 
+nameEfects = c(effect)
+# write.csv(nameEfects,file="C:/Users/Amelie/Documents/COCUCO/porro/PaperFinal/Response/nameEfects")
+# 
+# nameFlav = c(flavors)
+# write.csv(nameFlav,file="C:/Users/Amelie/Documents/COCUCO/porro/PaperFinal/Response/nameFlavors")
+# 
+# write.csv(total.eff,file="C:/Users/Amelie/Documents/COCUCO/porro/PaperFinal/Response/total_eff")
+# write.csv(total.flav,file="C:/Users/Amelie/Documents/COCUCO/porro/PaperFinal/Response/total_flav")
+
+x <-total.eff[ , nameEfects]
+x[x == 0] = NA
+y<-total.eff[ , nameTerpenes]
+y[y == 0] = NA
+
+cor_mat <- corr.test( y,x,use="pairwise.complete.obs",adjust = "none")
+# write.csv(cor_mat$r,file="efect_terp_R")
+
+cor_mat$r[cor_mat$p>0.05] <- NA
+corrplot(cor_mat$r, na.label =" ",title = "Terpenos y efectos",method = "number",number.cex=0.85,hclust.method ="centroid" )
+
+m <- !is.na(cor_mat$r)
+rr <- rownames(m)[row(m)[which(m)]]
+cc <- colnames(m)[col(m)[which(m)]]
+
+
+for (i in 1:length(rr))
+  {
+  g2 <- ggpairs(data=total_total[, c("categoria.x",rr[i],cc[i])],
+          # column = 1:2,
+          mapping = aes(colour = ),#categoria.x
+          lower = list(continuous = PlotCont))
+  print(g2)
+  }
+# write.csv(total.eff[ , c("tag",effects)],file="efectos_terpenos")
+# total.eff[89,]
+# z <- seq(from=1,to=2,by=.1)
+# z2 <- z^2
+# # cor_mat <- corr.test( z,z2,use="pairwise.complete.obs",adjust = "none")
+# 
+# cor_mat <- corr.test( y["value.X..D-Limonene"],x["Euphoric"],use="pairwise.complete.obs",adjust = "none")
+# cor_mat$r
+# cor_mat$p
+# length(y["value.X..D-Limonene"])
+# total.eff[1,]
+# write.csv(x,file="efectos")
+# write.csv(total.eff[ , c(names(meanaterp.final)[1])],file="tag")
+# 
+# # total.eff[43,"value.X..D-Limonene"]
+# # total.eff[44,"value.X..D-Limonene"]
+# # 
+# datos_effectos[,c("tag","Euphoric")]
+# total.eff[,c("tag","value.X..D-Limonene","Euphoric")]
+# total.eff[,c("tag","value.X..D-Limonene","Euphoric")]
+```
+
+```{r ,echo=FALSE, fig.height=10, fig.width=10, message=FALSE, warning=FALSE}
+# Con terpenos
+# which(strains.finales%in%datos_effectos$straine)
+namesCanna = c(names(meanacanna.final.menosgiga)[-1])
+write.csv(namesCanna,file="C:/Users/Amelie/Documents/COCUCO/porro/PaperFinal/Response/namesCanna")
+
+x <-total.flav[ , c(flavors)]
+y <-total.flav[ , c(names(meanacanna.final)[-1])]
+
+cor_mat <- corr.test(y,x,use="pairwise.complete.obs",adjust = "none")
+# write.csv(cor_mat$r,file="sabor_canna_R")
+
+cor_mat$r[cor_mat$p>0.05] <- NA
+corrplot(cor_mat$r, na.label =" ",title = "Canna y sabores",method = "number",number.cex=0.85)
+# # use vars in 
+# vectores <- paste0(" ~ ", paste(flavors[1:5], collapse=" + ")," + `",paste(names(meanaterp.final)[-1][1:5], collapse="` + `"),"`","|categoria")
+# 
+# scatterplotMatrix(as.formula(vectores), data=total.flav , use = c("pairwise.complete.obs")  , main="Scatter")
+# write.csv(total.flav[ , c("tag",flavors)],file="flavors_terpenos")
+
+
+x <-total.eff[ , c(effects)]
+y<-total.eff[ , c(names(meanacanna.final)[-1])]
+cor_mat <- corr.test( y,x,use="pairwise.complete.obs",adjust = "none")
+# mmm = as.data.frame(transpose(cor_mat$r) )
+plot(mmm)
+# write.csv(cor_mat$r,file="efectos_canna_R")
+cor_mat$r[cor_mat$p>0.05] <- NA
+corrplot(cor_mat$r, na.label =" ",title = "Canna y efectos",method = "number",number.cex=0.85)
+
+PlotCont = function(data, mapping, ...){
+    ggplot(data, mapping) + geom_point(..., shape = 19, alpha = 0.5) +
+      geom_smooth(method = "lm")
+}
+
+total_total <- Reduce(function(x,y) merge(x = x, y = y, by = "tag"),     list(datos_sabores,datos_effectos,meanacanna.final,meanaterp.final))
+m <- !is.na(cor_mat$r)
+rr <- rownames(m)[row(m)[which(m)]])
+cc <- colnames(m)[col(m)[which(m)]]
+
+
+for (i in 1:length(rr))
+  {
+  g2 <- ggpairs(data=total_total[, c("categoria.x",rr[i],cc[i])],
+          # column = 1:2,
+          mapping = aes(colour = ),
+          lower = list(continuous = PlotCont))
+  print(g2)
+  }
+```
+
+```{r ,echo=FALSE, fig.height=8, fig.width=8, message=FALSE, warning=FALSE}
+
+# which(strains.finales%in%datos_effectos$straine)
+y2<-total[ , c(names(meanaterp.final)[-1])]
+y1<-total[ , c(names(meanacanna.final)[-1])]
+
+cor_mat <- corr.test(y1,use="pairwise.complete.obs",adjust = "none")
+write.csv(cor_mat$r,file="canna_canna_R")
+cor_mat$r[cor_mat$p>0.05] <- NA
+
+corrplot(cor_mat$r, na.label =" ",title = "Canna",method = "number",number.cex=0.85)
+# # use vars in 
+
+cor_mat <- corr.test( y2,use="pairwise.complete.obs",adjust = "none")
+write.csv(cor_mat$r,file="terp_terp_R")
+
+cor_mat$r[cor_mat$p>0.05] <- NA
+corrplot(cor_mat$r, na.label =" ",title = "Terp")
+
+cor_mat <- corr.test( y1,y2,use="pairwise.complete.obs",adjust = "none")
+# write.csv(cor_mat$r,file="terp_canna_R")
+cor_mat$r[cor_mat$p>0.05] <- NA
+corrplot(cor_mat$r, na.label =" ",title = "Canna y Terp",method = "number",number.cex=0.85)
+
+PlotCont = function(data, mapping, ...){
+    ggplot(data, mapping) + geom_point(..., shape = 19, alpha = 0.5) +
+      geom_smooth(method = "lm")
+}
+
+total_total <- Reduce(function(x,y) merge(x = x, y = y, by = "tag"),     list(datos_sabores,datos_effectos,meanacanna.final,meanaterp.final))
+m <- !is.na(cor_mat$r)
+rr <- rownames(m)[row(m)[which(m)]]
+cc <- colnames(m)[col(m)[which(m)]]
+
+
+for (i in 1:length(rr))
+  {
+  g2 <- ggpairs(data=total_total[, c("categoria.x",rr[i],cc[i])],
+          # column = 1:2,
+          mapping = aes(colour = categoria.x),
+          lower = list(continuous = PlotCont))
+  print(g2)
+  }
+```
+
+
+```{r ,echo=FALSE, fig.height=20, fig.width=20, message=FALSE, warning=FALSE}
+# which(strains.finales%in%datos_effectos$straine)
+# transpose
+
+# write.csv(straintipo,file="straintipo")
+
+y1<-t_total[ c(names(meanaterp.final.menosgiga)[-1]), ]
+y2<-t_total[ c(names(meanacanna.final.menosgiga)[-1]) ,]
+
+cor_mat <- corr.test(y1,use="pairwise.complete.obs",adjust = "none")
+# write.csv(cor_mat$r,file="TerpSim_R")
+# cor1 <- cor(y1,use="pairwise.complete.obs")
+# corrplot(cor1,title = "Correlation Plot", method = "square", outline = T, addgrid.col = "darkgray", order="hclust",cl.pos = "b", tl.col = "indianred4", tl.cex = 1, cl.cex = 1)
+corrplot(cor_mat$r,title = "Correlation Terpens Profile", method = "square", outline = T, addgrid.col = "darkgray", order="hclust",cl.pos = "b", tl.col = "indianred4", tl.cex = 1, cl.cex = 1)
+cor_mat$r[cor_mat$p>0.05] <- NA
+
+
+# # use vars in 
+
+y2$`purple-og-kush` <- NULL
+y2$`black-afghan` <- NULL
+y2$`white-diesel` <- NULL
+cor_mat <- corr.test( y2,use="pairwise.complete.obs",adjust = "none")
+write.csv(cor_mat$r,file="CannSim")
+corrplot(cor_mat$r,title = "Correlation Cannabinoids Profile", method = "square", outline = T, addgrid.col = "darkgray", order="hclust",cl.pos = "b", tl.col = "indianred4", tl.cex = 1, cl.cex = 1)
+cor_mat$r[cor_mat$p>0.05] <- NA
+
+
+y1$`purple-og-kush` <- NULL
+y1$`black-afghan` <- NULL
+y1$`white-diesel` <- NULL
+ty1 <- as.data.frame(t(y1))
+ty2 <- as.data.frame(t(y2))
+ty2$`value.X..Delta9-THCa` <- NULL
+ty2$`value.X..Delta8-THC` <- NULL
+
+cor_mat <- corr.test(ty1,ty2 ,use="pairwise.complete.obs",adjust = "none")
+# write.csv(cor_mat$r,file="terp_canna_R")
+cor_mat$r[cor_mat$p>0.05] <- NA
+corrplot(cor_mat$r, na.label =" ",title = "Canna y Terp",method = "square",number.cex=0.85)
+```
+
+```{r ,echo=FALSE, fig.height=20, fig.width=20, message=FALSE, warning=FALSE}
+# Perfil Terp y Canna Indicas Vs Sativas
+
+# which(strains.finales%in%datos_effectos$straine)
+yIt<-total_total[which(total_total$categoria.x == "Indica") , c(names(meanaterp.final)[-1])]
+yIc<-total_total[ which(total_total$categoria.x == "Indica") , c(names(meanacanna.final)[-1])]
+
+ySt<-total_total[ which(total_total$categoria.x == "Sativa") , c(names(meanaterp.final)[-1])]
+ySc<-total_total[ which(total_total$categoria.x == "Sativa") , c(names(meanacanna.final)[-1])]
+
+# Terpenos
+par(mfrow=c(2,2)) 
+cor_mat <- corr.test(yIt,use="pairwise.complete.obs",adjust = "none")
+corrplot(cor_mat$r, na.label =" ",title = "TerpIndica",method = "square",number.cex=1)
+# # use vars in 
+cor_mat <- corr.test(ySt,use="pairwise.complete.obs",adjust = "none")
+corrplot(cor_mat$r, na.label =" ",title = "TerpSativa",method = "square",number.cex=1)
+par(mfrow=c(1,1)) 
+
+# # Terp
+# vectores <- paste0(" ~ `",paste(c(names(meanaterp.final)[-1])[1:10], collapse="` + `"),"`","|categoria.x")
+# scatterplotMatrix(as.formula(vectores), data=total_total , use = c("pairwise.complete.obs")  , main="Scatter")
+# 
+# # Canna
+# vectores <- paste0(" ~ `",paste(c(names(meanacanna.final)[-1]), collapse="` + `"),"`","|categoria.x")
+# scatterplotMatrix(as.formula(vectores), data=total_total , use = c("pairwise.complete.obs")  , main="Scatter")
+
+
+g1 <- ggpairs(data=total_total_plot, title="Canna",
+  mapping=ggplot2::aes(colour = categoria.x),
+  lower=list(combo=wrap("facethist",binwidth=1)))
+g1
+
+total_total_plot <- total_total_red[,c(names(meanaterp.final)[-1],"categoria.x")]
+g2 <- ggpairs(data=total_total_plot, title="Terp",
+  mapping=ggplot2::aes(colour = categoria.x),
+  lower=list(combo=wrap("facethist",binwidth=1)))
+g2
+
+# Cannabinoides
+par(mfrow=c(2,2)) 
+cor_mat <- corr.test(yIc,use="pairwise.complete.obs",adjust = "none")
+corrplot(cor_mat$r, na.label =" ",title = "CannIndica",method = "square",number.cex=0.95)
+# # use vars in 
+cor_mat <- corr.test(ySc,use="pairwise.complete.obs",adjust = "none")
+corrplot(cor_mat$r, na.label =" ",title = "CannSativa",method = "square",number.cex=0.95)
+par(mfrow=c(1,1)) 
+
+```
+
+```{r ,echo=FALSE, fig.height=20, fig.width=20, message=FALSE, warning=FALSE}
+# which(strains.finales%in%datos_effectos$straine)
+total_totalN <-  total_total[c(total_total$tag %in%straintipo$tag),]
+yS<-total_totalN[ , c(flavors)]
+yE<-total_totalN[ , c(effects)]
+
+# Terpenos
+par(mfrow=c(2,2)) 
+cor_mat <- corr.test(yS,use="pairwise.complete.obs",adjust = "none")
+corrplot(cor_mat$r, na.label =" ",title = "Sab",method = "square",number.cex=1)
+# # use vars in 
+cor_mat <- corr.test(yE,use="pairwise.complete.obs",adjust = "none")
+corrplot(cor_mat$r, na.label =" ",title = "Eff",method = "square",number.cex=1)
+
+nombres <- total_totalN$tag
+t_yS <- transpose(yS)
+# get row and colnames in order
+colnames(t_yS) <- nombres
+rownames(t_yS) <- colnames(yS)
+
+t_yE <- transpose(yE)
+# get row and colnames in order
+colnames(t_yE) <- nombres
+rownames(t_yE) <- colnames(yE)
+
+# Terpenos
+par(mfrow=c(2,2)) 
+cor_mat <- corr.test(t_yS,use="pairwise.complete.obs",adjust = "none")
+corrplot(cor_mat$r, na.label =" ",title = "Sab",method = "square",number.cex=1)
+write.csv(cor_mat$r,file="SaborSaborRestingido")
+
+# # use vars in 
+cor_mat <- corr.test(t_yE,use="pairwise.complete.obs",adjust = "none")
+corrplot(cor_mat$r, na.label =" ",title = "Eff",method = "square",number.cex=1)
+write.csv(cor_mat$r,file="EfectoEfectoRestingido")
+
+
+```
